@@ -1453,6 +1453,9 @@ public class WebSite {
             pointer-events: none; z-index: 0;
         }
         .container { position: relative; z-index: 1; width: 100%; max-width: 540px; display: flex; flex-direction: column; align-items: center; flex: 1; }
+        body.admin-page .container { max-width: calc(100vw - 40px); }
+        body.admin-page #admin-content { width: 100%; }
+        body.admin-page #admin-content .card { width: 100%; box-sizing: border-box; }
         .card {
             width: 100%;
             background: repeating-linear-gradient(0deg, rgba(0,0,0,.05) 0 2px, rgba(255,255,255,.04) 2px 4px), #313131;
@@ -2038,6 +2041,7 @@ public class WebSite {
             };
 
             // старт
+            document.body.classList.add('admin-page');
             loadTab();
             startPoll();
         })();
