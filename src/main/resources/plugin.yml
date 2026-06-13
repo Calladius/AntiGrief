@@ -1,5 +1,5 @@
 name: AntiGrief
-version: '2.0.7'
+version: '2.0.8'
 main: com.antigrief.AntiGriefPlugin
 api-version: '1.21'
 folia-supported: true

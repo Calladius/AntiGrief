@@ -694,7 +694,20 @@ public class WebSite {
 
     private void handleAdmin(Context ctx) {
         WebAccountRepository.AccountData account = getAccountFromSession(ctx);
-        if (account == null || !isAdmin(account)) { ctx.status(403).result("Доступ запрещён"); return; }
+        if (account == null || !isAdmin(account)) {
+            ctx.contentType("text/html");
+            ctx.status(403).result(htmlPage("\u26D4 Доступ запрещён — VNLLA.RU",
+                "<div class='title-block'><h1 class='mc-title'>VNLLA.RU</h1></div>"
+                + "<p class='mc-subtitle'>// ДОСТУП ЗАПРЕЩЁН //</p>"
+                + "<div class='card card--ender'>"
+                + "<div class='error-cube'>\u26D4</div>"
+                + "<p class='card-title card-title--ender'>НЕТ ПРАВ</p>"
+                + "<p class='error-msg'>Для доступа к админ-панели нужны права администратора.</p>"
+                + "<div class='mc-divider'></div>"
+                + "<div style='margin-top:18px'><a class='btn btn-green' href='/profile'>\u2BAE Вернуться в профиль</a></div>"
+                + "</div>"));
+            return;
+        }
         ctx.contentType("text/html");
         ctx.result(renderAdminSpa());
     }
