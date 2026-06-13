@@ -307,6 +307,7 @@ public class WebCommand implements CommandExecutor, TabCompleter {
             boolean accountUnbanned = false;
             int fpUnbanned = 0;
             int deviceUnbanned = 0;
+            int linkedUnbanned = 0;
             int accountId = plugin.getPlayerNickRepository().getAccountIdByNick(target);
             if (accountId > 0) {
                 plugin.getWebAccountRepository().unbanAccount(accountId);
@@ -317,12 +318,28 @@ public class WebCommand implements CommandExecutor, TabCompleter {
                     if (plugin.getFingerprintRepository().unbanFingerprint(fp.fingerprintHash)) {
                         fpUnbanned++;
                     }
+                    // разбан аккаунтов с этим fp
+                    var linkedIds = plugin.getFingerprintRepository().getAccountsByFingerprint(fp.fingerprintHash);
+                    for (int aid : linkedIds) {
+                        if (aid != accountId && plugin.getWebAccountRepository().isAccountBanned(aid)) {
+                            plugin.getWebAccountRepository().unbanAccount(aid);
+                            linkedUnbanned++;
+                        }
+                    }
                 }
 
                 var deviceFps = plugin.getDeviceFingerprintRepository().getDeviceFingerprintsByAccount(accountId);
                 for (var dfp : deviceFps) {
                     if (plugin.getDeviceFingerprintRepository().unbanDevice(dfp.deviceHash)) {
                         deviceUnbanned++;
+                    }
+                    // разбан аккаунтов с этим device
+                    var linkedIds = plugin.getDeviceFingerprintRepository().getAccountsByDevice(dfp.deviceHash);
+                    for (int aid : linkedIds) {
+                        if (aid != accountId && plugin.getWebAccountRepository().isAccountBanned(aid)) {
+                            plugin.getWebAccountRepository().unbanAccount(aid);
+                            linkedUnbanned++;
+                        }
                     }
                 }
             }
@@ -333,8 +350,9 @@ public class WebCommand implements CommandExecutor, TabCompleter {
                 if (accountUnbanned) msg += " &7(аккаунт)&7";
                 if (fpUnbanned > 0) msg += " &7(FP: &f" + fpUnbanned + "&7)";
                 if (deviceUnbanned > 0) msg += " &7(Device: &f" + deviceUnbanned + "&7)";
+                if (linkedUnbanned > 0) msg += " &7(связанных: &f" + linkedUnbanned + "&7)";
                 sender.sendMessage(LegacyComponentSerializer.legacyAmpersand().deserialize(msg));
-                plugin.getLogger().info("[Unban] " + target + " разбанен (" + unbanned + " IP + аккаунт + " + fpUnbanned + " FP + " + deviceUnbanned + " device, админ: " + sender.getName() + ")");
+                plugin.getLogger().info("[Unban] " + target + " разбанен (" + unbanned + " IP + аккаунт + " + fpUnbanned + " FP + " + deviceUnbanned + " device + " + linkedUnbanned + " связанных, админ: " + sender.getName() + ")");
                 plugin.getDiscordNotifier().notifyUnbanNick(sender.getName(), target, unbanned, accountUnbanned);
             } else {
                 sender.sendMessage(LegacyComponentSerializer.legacyAmpersand().deserialize(

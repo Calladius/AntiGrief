@@ -6,7 +6,7 @@
 
     <groupId>com.antigrief</groupId>
     <artifactId>AntiGrief</artifactId>
-    <version>2.0.6</version>
+    <version>2.0.7</version>
     <packaging>jar</packaging>
 
     <name>AntiGrief</name>
@@ -84,7 +84,7 @@
     </dependencies>
 
     <build>
-        <finalName>AntiGrief-2.0.6</finalName>
+        <finalName>AntiGrief</finalName>
         <resources>
             <resource>
                 <directory>src/main/resources</directory>
@@ -151,4 +151,3 @@
         </plugins>
     </build>
 </project>
-

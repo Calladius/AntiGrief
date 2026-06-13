@@ -5,6 +5,7 @@ import com.antigrief.check.IpChecker;
 import com.antigrief.check.VpnChecker;
 import com.antigrief.database.repository.DeviceFingerprintRepository;
 import com.antigrief.database.repository.FingerprintRepository;
+import com.antigrief.database.repository.IpBanRepository;
 import com.antigrief.database.repository.PlayerNickRepository;
 import com.antigrief.database.repository.WebAccountRepository;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -114,15 +115,24 @@ public class WebSite {
         app.get("/style.css", this::handleStyleCss);
         app.get("/fp.js", this::handleFpJs);
 
-        // админка
+        // админка — spa
         app.get("/admin", this::handleAdmin);
-        app.get("/admin/accounts", this::handleAdminAccounts);
-        app.get("/admin/fingerprints", this::handleAdminFingerprints);
-        app.get("/admin/ips", this::handleAdminIps);
-        app.post("/admin/ban", this::handleAdminBan);
-        app.post("/admin/unban", this::handleAdminUnban);
-        app.post("/admin/ban-fingerprint", this::handleAdminBanFingerprint);
-        app.post("/admin/unban-fingerprint", this::handleAdminUnbanFingerprint);
+
+        // json api для админки
+        app.get("/api/admin/status", this::handleApiAdminStatus);
+        app.get("/api/admin/accounts", this::handleApiAdminAccounts);
+        app.get("/api/admin/fingerprints", this::handleApiAdminFingerprints);
+        app.get("/api/admin/devices", this::handleApiAdminDevices);
+        app.get("/api/admin/ip-bans", this::handleApiAdminIpBans);
+        app.get("/api/admin/ips", this::handleApiAdminIps);
+        app.post("/api/admin/ban", this::handleApiAdminBan);
+        app.post("/api/admin/unban", this::handleApiAdminUnban);
+        app.post("/api/admin/ban-fingerprint", this::handleApiAdminBanFingerprint);
+        app.post("/api/admin/unban-fingerprint", this::handleApiAdminUnbanFingerprint);
+        app.post("/api/admin/ban-device", this::handleApiAdminBanDevice);
+        app.post("/api/admin/unban-device", this::handleApiAdminUnbanDevice);
+        app.post("/api/admin/ban-ip", this::handleApiAdminBanIp);
+        app.post("/api/admin/unban-ip", this::handleApiAdminUnbanIp);
 
         app.start(plugin.getConfigManager().getWebsitePort());
     }
@@ -680,45 +690,162 @@ public class WebSite {
     }
 
 
+    // ==================== Админка SPA ====================
+
     private void handleAdmin(Context ctx) {
         WebAccountRepository.AccountData account = getAccountFromSession(ctx);
         if (account == null || !isAdmin(account)) { ctx.status(403).result("Доступ запрещён"); return; }
-        String token = getTokenFromRequest(ctx);
         ctx.contentType("text/html");
-        ctx.result(renderAdminDashboard(account, token));
+        ctx.result(renderAdminSpa());
     }
 
-
-    private void handleAdminAccounts(Context ctx) {
+    // проверка админских прав, 403 json если нет
+    private boolean checkAdminApi(Context ctx) {
         WebAccountRepository.AccountData account = getAccountFromSession(ctx);
-        if (account == null || !isAdmin(account)) { ctx.status(403).result("Доступ запрещён"); return; }
-        String token = getTokenFromRequest(ctx);
-        ctx.contentType("text/html");
-        ctx.result(renderAdminAccounts(token));
+        if (account == null || !isAdmin(account)) {
+            ctx.status(403).json("{\"error\":\"Доступ запрещён\"}");
+            return false;
+        }
+        return true;
     }
 
-
-    private void handleAdminFingerprints(Context ctx) {
-        WebAccountRepository.AccountData account = getAccountFromSession(ctx);
-        if (account == null || !isAdmin(account)) { ctx.status(403).result("Доступ запрещён"); return; }
-        String token = getTokenFromRequest(ctx);
-        ctx.contentType("text/html");
-        ctx.result(renderAdminFingerprints(token));
+    private void handleApiAdminStatus(Context ctx) {
+        if (!checkAdminApi(ctx)) return;
+        int accountCount = plugin.getWebAccountRepository().getAccountCount();
+        int bannedCount = plugin.getWebAccountRepository().getBannedAccountCount();
+        int frozenCount = plugin.getFrozenPlayers().size();
+        List<FingerprintRepository.MultiAccountRecord> multi = plugin.getFingerprintRepository().getMultiAccountFingerprints();
+        List<DeviceFingerprintRepository.DeviceBan> deviceBans = plugin.getDeviceFingerprintRepository().getAllBannedDevices();
+        List<IpBanRepository.IpBan> ipBans = plugin.getIpBanRepository().getAllBans();
+        List<FingerprintRepository.FingerprintBan> fpBans = plugin.getFingerprintRepository().getAllBannedFingerprints();
+        StringBuilder sb = new StringBuilder("{");
+        sb.append("\"accountCount\":").append(accountCount).append(",");
+        sb.append("\"bannedCount\":").append(bannedCount).append(",");
+        sb.append("\"frozenCount\":").append(frozenCount).append(",");
+        sb.append("\"fpBanCount\":").append(fpBans.size()).append(",");
+        sb.append("\"deviceBanCount\":").append(deviceBans.size()).append(",");
+        sb.append("\"ipBanCount\":").append(ipBans.size()).append(",");
+        sb.append("\"multiAccounts\":[");
+        for (int i = 0; i < multi.size(); i++) {
+            FingerprintRepository.MultiAccountRecord r = multi.get(i);
+            if (i > 0) sb.append(",");
+            sb.append("{\"hash\":\"").append(esc(r.fingerprintHash)).append("\",\"count\":").append(r.accountCount).append(",\"ids\":[");
+            for (int j = 0; j < r.accountIds.size(); j++) {
+                if (j > 0) sb.append(",");
+                sb.append(r.accountIds.get(j));
+            }
+            sb.append("]}");
+        }
+        sb.append("]}");
+        ctx.contentType("application/json").result(sb.toString());
     }
 
-
-    private void handleAdminIps(Context ctx) {
-        WebAccountRepository.AccountData account = getAccountFromSession(ctx);
-        if (account == null || !isAdmin(account)) { ctx.status(403).result("Доступ запрещён"); return; }
-        String token = getTokenFromRequest(ctx);
-        ctx.contentType("text/html");
-        ctx.result(renderAdminIps(token));
+    private void handleApiAdminAccounts(Context ctx) {
+        if (!checkAdminApi(ctx)) return;
+        List<WebAccountRepository.AccountData> accounts = plugin.getWebAccountRepository().getAllAccounts();
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < accounts.size(); i++) {
+            WebAccountRepository.AccountData a = accounts.get(i);
+            if (i > 0) sb.append(",");
+            List<String> nicks = plugin.getPlayerNickRepository().getNicksByAccount(a.id);
+            StringBuilder nickArr = new StringBuilder("[");
+            for (int j = 0; j < nicks.size(); j++) {
+                if (j > 0) nickArr.append(",");
+                nickArr.append("\"").append(esc(nicks.get(j))).append("\"");
+            }
+            nickArr.append("]");
+            sb.append("{\"id\":").append(a.id)
+                .append(",\"name\":\"").append(esc(a.username)).append("\"")
+                .append(",\"discord\":").append(a.discordId != null ? "true" : "false")
+                .append(",\"google\":").append(a.googleId != null ? "true" : "false")
+                .append(",\"telegram\":").append(a.telegramId != null ? "true" : "false")
+                .append(",\"banned\":").append(a.isBanned)
+                .append(",\"banReason\":").append(a.banReason != null ? "\"" + esc(a.banReason) + "\"" : "null")
+                .append(",\"banExpires\":").append(a.banExpires != null ? "\"" + esc(a.banExpires) + "\"" : "null")
+                .append(",\"nicks\":").append(nickArr)
+                .append(",\"createdAt\":").append(a.createdAt != null ? "\"" + esc(a.createdAt) + "\"" : "null")
+                .append("}");
+        }
+        sb.append("]");
+        ctx.contentType("application/json").result(sb.toString());
     }
 
+    private void handleApiAdminFingerprints(Context ctx) {
+        if (!checkAdminApi(ctx)) return;
+        List<FingerprintRepository.FingerprintRecord> fps = plugin.getFingerprintRepository().getAllFingerprints();
+        List<FingerprintRepository.FingerprintBan> bans = plugin.getFingerprintRepository().getAllBannedFingerprints();
+        StringBuilder sb = new StringBuilder("{");
+        // баны
+        sb.append("\"bans\":[");
+        for (int i = 0; i < bans.size(); i++) {
+            FingerprintRepository.FingerprintBan b = bans.get(i);
+            if (i > 0) sb.append(",");
+            sb.append("{\"hash\":\"").append(esc(b.fingerprintHash)).append("\",\"reason\":\"").append(esc(b.reason)).append("\",\"date\":\"").append(esc(b.bannedAt)).append("\"}");
+        }
+        sb.append("],");
+        // все отпечатки
+        sb.append("\"records\":[");
+        for (int i = 0; i < fps.size(); i++) {
+            FingerprintRepository.FingerprintRecord fp = fps.get(i);
+            if (i > 0) sb.append(",");
+            sb.append("{\"hash\":\"").append(esc(fp.fingerprintHash)).append("\",\"accountId\":").append(fp.webAccountId)
+                .append(",\"ip\":\"").append(esc(fp.ipAddress)).append("\",\"lastSeen\":\"").append(esc(fp.lastSeen)).append("\"}");
+        }
+        sb.append("]}");
+        ctx.contentType("application/json").result(sb.toString());
+    }
 
-    private void handleAdminBan(Context ctx) {
-        WebAccountRepository.AccountData account = getAccountFromSession(ctx);
-        if (account == null || !isAdmin(account)) { ctx.status(403).result("Доступ запрещён"); return; }
+    private void handleApiAdminDevices(Context ctx) {
+        if (!checkAdminApi(ctx)) return;
+        List<DeviceFingerprintRepository.DeviceFingerprintRecord> devs = plugin.getDeviceFingerprintRepository().getAllDeviceFingerprints();
+        List<DeviceFingerprintRepository.DeviceBan> bans = plugin.getDeviceFingerprintRepository().getAllBannedDevices();
+        StringBuilder sb = new StringBuilder("{");
+        sb.append("\"bans\":[");
+        for (int i = 0; i < bans.size(); i++) {
+            DeviceFingerprintRepository.DeviceBan b = bans.get(i);
+            if (i > 0) sb.append(",");
+            sb.append("{\"hash\":\"").append(esc(b.deviceHash)).append("\",\"reason\":\"").append(esc(b.reason)).append("\",\"date\":\"").append(esc(b.bannedAt)).append("\"}");
+        }
+        sb.append("],");
+        sb.append("\"records\":[");
+        for (int i = 0; i < devs.size(); i++) {
+            DeviceFingerprintRepository.DeviceFingerprintRecord d = devs.get(i);
+            if (i > 0) sb.append(",");
+            sb.append("{\"hash\":\"").append(esc(d.deviceHash)).append("\",\"accountId\":").append(d.webAccountId)
+                .append(",\"ip\":\"").append(esc(d.ipAddress)).append("\",\"webrtcIp\":\"").append(esc(d.webrtcIp != null ? d.webrtcIp : "")).append("\",\"lastSeen\":\"").append(esc(d.lastSeen)).append("\"}");
+        }
+        sb.append("]}");
+        ctx.contentType("application/json").result(sb.toString());
+    }
+
+    private void handleApiAdminIpBans(Context ctx) {
+        if (!checkAdminApi(ctx)) return;
+        List<IpBanRepository.IpBan> bans = plugin.getIpBanRepository().getAllBans();
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < bans.size(); i++) {
+            IpBanRepository.IpBan b = bans.get(i);
+            if (i > 0) sb.append(",");
+            sb.append("{\"ip\":\"").append(esc(b.ipAddress)).append("\",\"reason\":\"").append(esc(b.reason)).append("\",\"bannedBy\":\"").append(esc(b.bannedBy != null ? b.bannedBy : "")).append("\",\"date\":\"").append(esc(b.bannedAt)).append("\",\"expires\":").append(b.expiresAt != null ? "\"" + esc(b.expiresAt) + "\"" : "null").append("}");
+        }
+        sb.append("]");
+        ctx.contentType("application/json").result(sb.toString());
+    }
+
+    private void handleApiAdminIps(Context ctx) {
+        if (!checkAdminApi(ctx)) return;
+        List<com.antigrief.database.repository.PlayerIpRepository.IpRecord> ips = plugin.getPlayerIpRepository().getAllRecords();
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < ips.size(); i++) {
+            com.antigrief.database.repository.PlayerIpRepository.IpRecord ip = ips.get(i);
+            if (i > 0) sb.append(",");
+            sb.append("{\"nick\":\"").append(esc(ip.minecraftNick)).append("\",\"ip\":\"").append(esc(ip.ipAddress)).append("\",\"first\":\"").append(esc(ip.firstSeen)).append("\",\"last\":\"").append(esc(ip.lastSeen)).append("\"}");
+        }
+        sb.append("]");
+        ctx.contentType("application/json").result(sb.toString());
+    }
+
+    private void handleApiAdminBan(Context ctx) {
+        if (!checkAdminApi(ctx)) return;
         String accountIdStr = ctx.formParam("account_id");
         String reason = ctx.formParam("reason");
         if (accountIdStr != null) {
@@ -726,50 +853,105 @@ public class WebSite {
             banAccountFull(accountId, reason != null ? reason : "Не указана");
             plugin.getDiscordNotifier().notifyBanNick("Admin(Web)", "Account#" + accountId, 0, reason != null ? reason : "Не указана", "перманентно", true);
         }
-        String token = getTokenFromRequest(ctx);
-        ctx.redirect("/admin/accounts?s=" + (token != null ? token : ""));
+        ctx.contentType("application/json").result("{\"ok\":true}");
     }
 
-
-    private void handleAdminUnban(Context ctx) {
-        WebAccountRepository.AccountData account = getAccountFromSession(ctx);
-        if (account == null || !isAdmin(account)) { ctx.status(403).result("Доступ запрещён"); return; }
+    private void handleApiAdminUnban(Context ctx) {
+        if (!checkAdminApi(ctx)) return;
         String accountIdStr = ctx.formParam("account_id");
         if (accountIdStr != null) {
-            plugin.getWebAccountRepository().unbanAccount(Integer.parseInt(accountIdStr));
+            int accountId = Integer.parseInt(accountIdStr);
+            plugin.getWebAccountRepository().unbanAccount(accountId);
+            // разбан отпечатков + устройств + связанных аккаунтов
+            List<FingerprintRepository.FingerprintRecord> fps = plugin.getFingerprintRepository().getFingerprintsByAccount(accountId);
+            for (FingerprintRepository.FingerprintRecord fp : fps) {
+                plugin.getFingerprintRepository().unbanFingerprint(fp.fingerprintHash);
+                // разбан аккаунтов с этим fp
+                List<Integer> linkedIds = plugin.getFingerprintRepository().getAccountsByFingerprint(fp.fingerprintHash);
+                for (int aid : linkedIds) {
+                    if (aid != accountId && plugin.getWebAccountRepository().isAccountBanned(aid)) {
+                        plugin.getWebAccountRepository().unbanAccount(aid);
+                    }
+                }
+            }
+            List<DeviceFingerprintRepository.DeviceFingerprintRecord> deviceFps = plugin.getDeviceFingerprintRepository().getDeviceFingerprintsByAccount(accountId);
+            for (DeviceFingerprintRepository.DeviceFingerprintRecord dfp : deviceFps) {
+                plugin.getDeviceFingerprintRepository().unbanDevice(dfp.deviceHash);
+                // разбан аккаунтов с этим device
+                List<Integer> linkedIds = plugin.getDeviceFingerprintRepository().getAccountsByDevice(dfp.deviceHash);
+                for (int aid : linkedIds) {
+                    if (aid != accountId && plugin.getWebAccountRepository().isAccountBanned(aid)) {
+                        plugin.getWebAccountRepository().unbanAccount(aid);
+                    }
+                }
+            }
         }
-        String token = getTokenFromRequest(ctx);
-        ctx.redirect("/admin/accounts?s=" + (token != null ? token : ""));
+        ctx.contentType("application/json").result("{\"ok\":true}");
     }
 
-
-    private void handleAdminBanFingerprint(Context ctx) {
-        WebAccountRepository.AccountData account = getAccountFromSession(ctx);
-        if (account == null || !isAdmin(account)) { ctx.status(403).result("Доступ запрещён"); return; }
+    private void handleApiAdminBanFingerprint(Context ctx) {
+        if (!checkAdminApi(ctx)) return;
         String fpHash = ctx.formParam("fingerprint_hash");
         String reason = ctx.formParam("reason");
         if (fpHash != null) {
             plugin.getFingerprintRepository().banFingerprint(fpHash, reason != null ? reason : "Мульти-аккаунт");
-            // баним все аккаунты с этим fp
             List<Integer> accountIds = plugin.getFingerprintRepository().getAccountsByFingerprint(fpHash);
             for (int aid : accountIds) {
                 banAccountFull(aid, "Fingerprint ban: " + (reason != null ? reason : "?"));
             }
         }
-        String token = getTokenFromRequest(ctx);
-        ctx.redirect("/admin/fingerprints?s=" + (token != null ? token : ""));
+        ctx.contentType("application/json").result("{\"ok\":true}");
     }
 
-
-    private void handleAdminUnbanFingerprint(Context ctx) {
-        WebAccountRepository.AccountData account = getAccountFromSession(ctx);
-        if (account == null || !isAdmin(account)) { ctx.status(403).result("Доступ запрещён"); return; }
+    private void handleApiAdminUnbanFingerprint(Context ctx) {
+        if (!checkAdminApi(ctx)) return;
         String fpHash = ctx.formParam("fingerprint_hash");
         if (fpHash != null) {
             plugin.getFingerprintRepository().unbanFingerprint(fpHash);
         }
-        String token = getTokenFromRequest(ctx);
-        ctx.redirect("/admin/fingerprints?s=" + (token != null ? token : ""));
+        ctx.contentType("application/json").result("{\"ok\":true}");
+    }
+
+    private void handleApiAdminBanDevice(Context ctx) {
+        if (!checkAdminApi(ctx)) return;
+        String deviceHash = ctx.formParam("device_hash");
+        String reason = ctx.formParam("reason");
+        if (deviceHash != null) {
+            plugin.getDeviceFingerprintRepository().banDevice(deviceHash, reason != null ? reason : "Мульти-аккаунт");
+            List<Integer> accountIds = plugin.getDeviceFingerprintRepository().getAccountsByDevice(deviceHash);
+            for (int aid : accountIds) {
+                banAccountFull(aid, "Device ban: " + (reason != null ? reason : "?"));
+            }
+        }
+        ctx.contentType("application/json").result("{\"ok\":true}");
+    }
+
+    private void handleApiAdminUnbanDevice(Context ctx) {
+        if (!checkAdminApi(ctx)) return;
+        String deviceHash = ctx.formParam("device_hash");
+        if (deviceHash != null) {
+            plugin.getDeviceFingerprintRepository().unbanDevice(deviceHash);
+        }
+        ctx.contentType("application/json").result("{\"ok\":true}");
+    }
+
+    private void handleApiAdminBanIp(Context ctx) {
+        if (!checkAdminApi(ctx)) return;
+        String ip = ctx.formParam("ip");
+        String reason = ctx.formParam("reason");
+        if (ip != null) {
+            plugin.getIpBanRepository().banIp(ip, reason != null ? reason : "Не указана", "Admin(Web)");
+        }
+        ctx.contentType("application/json").result("{\"ok\":true}");
+    }
+
+    private void handleApiAdminUnbanIp(Context ctx) {
+        if (!checkAdminApi(ctx)) return;
+        String ip = ctx.formParam("ip");
+        if (ip != null) {
+            plugin.getIpBanRepository().unbanIp(ip);
+        }
+        ctx.contentType("application/json").result("{\"ok\":true}");
     }
 
     // ==================== OAuth2 API ====================
@@ -1338,8 +1520,19 @@ public class WebSite {
         th { background: #313131; color: var(--mc-yellow); text-shadow: 1px 1px 0 #1a1a1a; }
         td { background: #1a1a1a; }
         .admin-nav { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
-        .admin-nav a { color: var(--mc-yellow); text-decoration: none; font-size: 10px; padding: 6px 10px; border: 2px solid #1a1a1a; background: #313131; text-shadow: 1px 1px 0 #1a1a1a; box-shadow: inset 2px 2px 0 #5a5a5a, inset -2px -2px 0 #1a1a1a; }
+        .admin-nav a { color: var(--mc-yellow); text-decoration: none; font-size: 10px; padding: 6px 10px; border: 2px solid #1a1a1a; background: #313131; text-shadow: 1px 1px 0 #1a1a1a; box-shadow: inset 2px 2px 0 #5a5a5a, inset -2px -2px 0 #1a1a1a; cursor: pointer; }
         .admin-nav a:hover { border-color: var(--mc-yellow); }
+        .admin-nav a.active { border-color: var(--mc-yellow); background: #4a4a1a; box-shadow: inset 2px 2px 0 #7a7a3a, inset -2px -2px 0 #2a2a0a; }
+        .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        .hash-cell { word-break: break-all; max-width: 120px; overflow: hidden; }
+        .name-cell { word-break: break-all; max-width: 140px; }
+        .nick-cell { word-break: break-all; max-width: 120px; }
+        .reason-cell { word-break: break-word; max-width: 140px; }
+        .ip-cell { white-space: nowrap; }
+        .date-cell { white-space: nowrap; font-size: 9px; }
+        .action-cell { white-space: nowrap; }
+        .action-cell .btn-small { margin: 2px; }
+        .ban-reason-input { width: 80px !important; font-size: 9px !important; padding: 6px 8px !important; display: inline-block !important; vertical-align: middle; }
         .banned { color: #ff5555; text-shadow: 1px 1px 0 #330000; }
         .not-banned { color: var(--mc-green); text-shadow: 1px 1px 0 #003300; }
         .mc-divider { height: 8px; margin: 20px 0; width: 100%; background: linear-gradient(180deg, #1a1a1a 0 2px, #5a5a5a 2px 4px, #373737 4px 6px, #1a1a1a 6px 8px); border-radius: 1px; }
@@ -1567,139 +1760,276 @@ public class WebSite {
     // ==================== Админ-панель рендеринг ====================
 
 
-    private String renderAdminDashboard(WebAccountRepository.AccountData account, String token) {
-        int accountCount = plugin.getWebAccountRepository().getAccountCount();
-        int frozenCount = plugin.getFrozenPlayers().size();
-        List<FingerprintRepository.MultiAccountRecord> multi = plugin.getFingerprintRepository().getMultiAccountFingerprints();
-        String t = token != null ? token : "";
+    // spa админки — одна страница, данные через json api
+    private String renderAdminSpa() {
+        return htmlPage("\u26CF Админ-панель — VNLLA.RU", ""
+            + "<div class='admin-nav'>"
+            + "<a href='#status' class='admin-tab active' data-tab='status'>Статус</a>"
+            + "<a href='#accounts' class='admin-tab' data-tab='accounts'>Аккаунты</a>"
+            + "<a href='#fingerprints' class='admin-tab' data-tab='fingerprints'>Отпечатки</a>"
+            + "<a href='#devices' class='admin-tab' data-tab='devices'>Устройства</a>"
+            + "<a href='#ip-bans' class='admin-tab' data-tab='ip-bans'>IP баны</a>"
+            + "<a href='#ips' class='admin-tab' data-tab='ips'>IP лог</a>"
+            + "<a href='/profile' class='admin-tab'>Профиль</a>"
+            + "</div>"
+            + "<div id='admin-content'><div class='card'><div class='card-title'>Загрузка...</div></div></div>",
+            ADMIN_SPA_JS);
+    }
 
-        StringBuilder sb = new StringBuilder();
-        sb.append(adminNav(t));
-        sb.append("<div class='card'>");
-        sb.append("<div class='card-title'>Статус</div>");
-        sb.append("<p>Аккаунтов: <span style='color:#00ff00'>").append(accountCount).append("</span></p>");
-        sb.append("<p>Заморожено: <span style='color:#ff4444'>").append(frozenCount).append("</span></p>");
-        sb.append("<p>Мульти-аккаунтов: <span style='color:#ffd700'>").append(multi.size()).append("</span></p>");
-        sb.append("</div>");
+    // js для spa админки — polling, рендер таблиц, действия
+    private static final String ADMIN_SPA_JS = """
+        <script>
+        (function(){
+            var token = null;
+            var currentTab = 'status';
+            var pollTimer = null;
+            var lastData = {};
 
-        if (!multi.isEmpty()) {
-            sb.append("<div class='card'>");
-            sb.append("<div class='card-title'>Мульти-аккаунты</div>");
-            sb.append("<table><tr><th>Отпечаток</th><th>Аккаунтов</th><th>Действие</th></tr>");
-            for (FingerprintRepository.MultiAccountRecord r : multi) {
-                sb.append("<tr><td>").append(r.fingerprintHash.substring(0, Math.min(16, r.fingerprintHash.length()))).append("...</td>");
-                sb.append("<td>").append(r.accountCount).append("</td>");
-                sb.append("<td><form method='POST' action='/admin/ban-fingerprint?s=").append(t).append("' style='display:inline'>");
-                sb.append("<input type='hidden' name='fingerprint_hash' value='").append(r.fingerprintHash).append("'>");
-                sb.append("<button type='submit' class='btn btn-red btn-small'>Бан</button></form></td></tr>");
+            // получаем токен из cookie или url
+            function getToken() {
+                if (token) return token;
+                var c = document.cookie.match(/ag_session=([^;]+)/);
+                if (c) { token = c[1]; return token; }
+                var m = location.search.match(/[?&]s=([^&]+)/);
+                if (m) { token = m[1]; return token; }
+                return '';
             }
-            sb.append("</table></div>");
-        }
 
-        return htmlPage("Админ-панель — VNLLA.RU", sb.toString());
-    }
-
-
-    private String renderAdminAccounts(String token) {
-        List<WebAccountRepository.AccountData> accounts = plugin.getWebAccountRepository().getAllAccounts();
-        String t = token != null ? token : "";
-
-        StringBuilder sb = new StringBuilder();
-        sb.append(adminNav(t));
-        sb.append("<div class='card'>");
-        sb.append("<div class='card-title'>Аккаунты (").append(accounts.size()).append(")</div>");
-        sb.append("<table><tr><th>ID</th><th>Имя</th><th>Discord</th><th>Статус</th><th>Действие</th></tr>");
-        for (WebAccountRepository.AccountData a : accounts) {
-            String status = a.isBanned ? "<span class='banned'>БАН</span>" : "<span class='not-banned'>ОК</span>";
-            sb.append("<tr><td>").append(a.id).append("</td>");
-            sb.append("<td>").append(esc(a.username)).append("</td>");
-            sb.append("<td>").append(a.discordId != null ? "Да" : "Нет").append("</td>");
-            sb.append("<td>").append(status).append("</td>");
-            sb.append("<td>");
-            if (a.isBanned) {
-                sb.append("<form method='POST' action='/admin/unban?s=").append(t).append("' style='display:inline'>");
-                sb.append("<input type='hidden' name='account_id' value='").append(a.id).append("'>");
-                sb.append("<button type='submit' class='btn btn-green btn-small'>Разбан</button></form>");
-            } else {
-                sb.append("<form method='POST' action='/admin/ban?s=").append(t).append("' style='display:inline'>");
-                sb.append("<input type='hidden' name='account_id' value='").append(a.id).append("'>");
-                sb.append("<input type='text' name='reason' class='input-field' style='width:120px;font-size:9px' placeholder='Причина'>");
-                sb.append("<button type='submit' class='btn btn-red btn-small'>Бан</button></form>");
+            function api(method, url, body, cb) {
+                var opts = {method: method, headers: {}};
+                var t = getToken();
+                if (t) url += (url.indexOf('?') < 0 ? '?' : '&') + 's=' + t;
+                if (body) {
+                    opts.headers['Content-Type'] = 'application/x-www-form-urlencoded';
+                    opts.body = body;
+                }
+                fetch(url, opts).then(function(r){
+                    if (r.status === 403) { location.href = '/login'; return; }
+                    return r.json();
+                }).then(function(d){ if (cb && d) cb(d); }).catch(function(e){});
             }
-            sb.append("</td></tr>");
-        }
-        sb.append("</table></div>");
-        return htmlPage("Аккаунты — VNLLA.RU", sb.toString());
-    }
 
+            function esc(s) { if (!s) return ''; var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+            function short(s, n) { return s && s.length > n ? s.substring(0, n) + '...' : (s || ''); }
 
-    private String renderAdminFingerprints(String token) {
-        List<FingerprintRepository.FingerprintRecord> fps = plugin.getFingerprintRepository().getAllFingerprints();
-        List<FingerprintRepository.FingerprintBan> bans = plugin.getFingerprintRepository().getAllBannedFingerprints();
-        String t = token != null ? token : "";
+            // табы
+            document.querySelector('.admin-nav').addEventListener('click', function(e){
+                if (!e.target.classList.contains('admin-tab')) return;
+                if (e.target.tagName !== 'A' || !e.target.dataset.tab) return;
+                e.preventDefault();
+                document.querySelectorAll('.admin-tab').forEach(function(t){ t.classList.remove('active'); });
+                e.target.classList.add('active');
+                currentTab = e.target.dataset.tab;
+                loadTab();
+            });
 
-        StringBuilder sb = new StringBuilder();
-        sb.append(adminNav(t));
-
-        if (!bans.isEmpty()) {
-            sb.append("<div class='card'>");
-            sb.append("<div class='card-title'>Забаненные отпечатки</div>");
-            sb.append("<table><tr><th>Хеш</th><th>Причина</th><th>Дата</th><th>Действие</th></tr>");
-            for (FingerprintRepository.FingerprintBan b : bans) {
-                sb.append("<tr><td>").append(b.fingerprintHash.substring(0, Math.min(16, b.fingerprintHash.length()))).append("...</td>");
-                sb.append("<td>").append(esc(b.reason)).append("</td>");
-                sb.append("<td>").append(b.bannedAt).append("</td>");
-                sb.append("<td><form method='POST' action='/admin/unban-fingerprint?s=").append(t).append("' style='display:inline'>");
-                sb.append("<input type='hidden' name='fingerprint_hash' value='").append(b.fingerprintHash).append("'>");
-                sb.append("<button type='submit' class='btn btn-green btn-small'>Разбан</button></form></td></tr>");
+            function loadTab() {
+                var cont = document.getElementById('admin-content');
+                cont.innerHTML = '<div class="card"><div class="card-title">Загрузка...</div></div>';
+                if (currentTab === 'status') api('GET', '/api/admin/status', null, renderStatus);
+                else if (currentTab === 'accounts') api('GET', '/api/admin/accounts', null, renderAccounts);
+                else if (currentTab === 'fingerprints') api('GET', '/api/admin/fingerprints', null, renderFingerprints);
+                else if (currentTab === 'devices') api('GET', '/api/admin/devices', null, renderDevices);
+                else if (currentTab === 'ip-bans') api('GET', '/api/admin/ip-bans', null, renderIpBans);
+                else if (currentTab === 'ips') api('GET', '/api/admin/ips', null, renderIps);
             }
-            sb.append("</table></div>");
-        }
 
-        sb.append("<div class='card'>");
-        sb.append("<div class='card-title'>Отпечатки (").append(fps.size()).append(")</div>");
-        sb.append("<table><tr><th>Хеш</th><th>Аккаунт</th><th>IP</th><th>Последний</th></tr>");
-        for (FingerprintRepository.FingerprintRecord fp : fps) {
-            sb.append("<tr><td>").append(fp.fingerprintHash.substring(0, Math.min(12, fp.fingerprintHash.length()))).append("...</td>");
-            sb.append("<td>").append(fp.webAccountId).append("</td>");
-            sb.append("<td>").append(esc(fp.ipAddress)).append("</td>");
-            sb.append("<td>").append(fp.lastSeen).append("</td></tr>");
-        }
-        sb.append("</table></div>");
-        return htmlPage("Отпечатки — VNLLA.RU", sb.toString());
-    }
+            // polling каждые 5сек
+            function startPoll() {
+                if (pollTimer) clearInterval(pollTimer);
+                pollTimer = setInterval(function(){
+                    if (currentTab === 'status') api('GET', '/api/admin/status', null, renderStatus);
+                    else if (currentTab === 'accounts') api('GET', '/api/admin/accounts', null, renderAccounts);
+                    else if (currentTab === 'fingerprints') api('GET', '/api/admin/fingerprints', null, renderFingerprints);
+                    else if (currentTab === 'devices') api('GET', '/api/admin/devices', null, renderDevices);
+                    else if (currentTab === 'ip-bans') api('GET', '/api/admin/ip-bans', null, renderIpBans);
+                    else if (currentTab === 'ips') api('GET', '/api/admin/ips', null, renderIps);
+                }, 5000);
+            }
 
+            // ==================== Рендер ====================
 
-    private String renderAdminIps(String token) {
-        List<com.antigrief.database.repository.PlayerIpRepository.IpRecord> ips = plugin.getPlayerIpRepository().getAllRecords();
-        String t = token != null ? token : "";
+            function renderStatus(d) {
+                var h = '<div class="card"><div class="card-title">Статус</div>';
+                h += '<p>Аккаунтов: <span style="color:#55ff55">' + d.accountCount + '</span></p>';
+                h += '<p>Забанено: <span style="color:#ff5555">' + d.bannedCount + '</span></p>';
+                h += '<p>Заморожено: <span style="color:#ff5555">' + d.frozenCount + '</span></p>';
+                h += '<p>Банов отпечатков: <span style="color:#ffd700">' + d.fpBanCount + '</span></p>';
+                h += '<p>Банов устройств: <span style="color:#ffd700">' + d.deviceBanCount + '</span></p>';
+                h += '<p>IP банов: <span style="color:#ffd700">' + d.ipBanCount + '</span></p>';
+                h += '</div>';
+                if (d.multiAccounts && d.multiAccounts.length > 0) {
+                    h += '<div class="card"><div class="card-title">Мульти-аккаунты</div>';
+                    h += '<div class="table-wrap"><table><tr><th>Отпечаток</th><th>Аккаунтов</th><th>ID</th><th>Действие</th></tr>';
+                    d.multiAccounts.forEach(function(m){
+                        h += '<tr><td class="hash-cell">' + esc(short(m.hash, 16)) + '</td>';
+                        h += '<td>' + m.count + '</td>';
+                        h += '<td>' + m.ids.join(', ') + '</td>';
+                        h += '<td class="action-cell"><button class="btn btn-red btn-small" onclick="adminBanFp(\\'' + esc(m.hash) + '\\')">Бан</button></td></tr>';
+                    });
+                    h += '</table></div></div>';
+                }
+                document.getElementById('admin-content').innerHTML = h;
+            }
 
-        StringBuilder sb = new StringBuilder();
-        sb.append(adminNav(t));
-        sb.append("<div class='card'>");
-        sb.append("<div class='card-title'>IP адреса (").append(ips.size()).append(")</div>");
-        sb.append("<table><tr><th>Ник</th><th>IP</th><th>Первый раз</th><th>Последний</th></tr>");
-        for (com.antigrief.database.repository.PlayerIpRepository.IpRecord ip : ips) {
-            sb.append("<tr><td>").append(esc(ip.minecraftNick)).append("</td>");
-            sb.append("<td>").append(esc(ip.ipAddress)).append("</td>");
-            sb.append("<td>").append(ip.firstSeen).append("</td>");
-            sb.append("<td>").append(ip.lastSeen).append("</td></tr>");
-        }
-        sb.append("</table></div>");
-        return htmlPage("IP адреса — VNLLA.RU", sb.toString());
-    }
+            function renderAccounts(arr) {
+                var h = '<div class="card"><div class="card-title">Аккаунты (' + arr.length + ')</div>';
+                h += '<div class="table-wrap"><table><tr><th>ID</th><th>Имя</th><th>Ники</th><th>Соцсети</th><th>Статус</th><th>Действие</th></tr>';
+                arr.forEach(function(a){
+                    var status = a.banned ? '<span class="banned">БАН</span>' : '<span class="not-banned">ОК</span>';
+                    var socials = [];
+                    if (a.discord) socials.push('D');
+                    if (a.google) socials.push('G');
+                    if (a.telegram) socials.push('T');
+                    h += '<tr><td>' + a.id + '</td>';
+                    h += '<td class="name-cell">' + esc(a.name) + '</td>';
+                    h += '<td class="nick-cell">' + (a.nicks.length > 0 ? a.nicks.map(esc).join(', ') : '-') + '</td>';
+                    h += '<td>' + (socials.length > 0 ? socials.join(' ') : '-') + '</td>';
+                    h += '<td>' + status + '</td>';
+                    h += '<td class="action-cell">';
+                    if (a.banned) {
+                        h += '<button class="btn btn-green btn-small" onclick="adminUnban(' + a.id + ')">Разбан</button>';
+                    } else {
+                        h += '<input type="text" class="input-field ban-reason-input" id="reason-' + a.id + '" placeholder="Причина">';
+                        h += '<button class="btn btn-red btn-small" onclick="adminBan(' + a.id + ')">Бан</button>';
+                    }
+                    h += '</td></tr>';
+                });
+                h += '</table></div></div>';
+                document.getElementById('admin-content').innerHTML = h;
+            }
 
+            function renderFingerprints(d) {
+                var h = '';
+                if (d.bans && d.bans.length > 0) {
+                    h += '<div class="card"><div class="card-title">Забаненные отпечатки</div>';
+                    h += '<div class="table-wrap"><table><tr><th>Хеш</th><th>Причина</th><th>Дата</th><th>Действие</th></tr>';
+                    d.bans.forEach(function(b){
+                        h += '<tr><td class="hash-cell">' + esc(short(b.hash, 16)) + '</td>';
+                        h += '<td class="reason-cell">' + esc(b.reason) + '</td>';
+                        h += '<td class="date-cell">' + esc(b.date) + '</td>';
+                        h += '<td class="action-cell"><button class="btn btn-green btn-small" onclick="adminUnbanFp(\\'' + esc(b.hash) + '\\')">Разбан</button></td></tr>';
+                    });
+                    h += '</table></div></div>';
+                }
+                h += '<div class="card"><div class="card-title">Отпечатки (' + d.records.length + ')</div>';
+                h += '<div class="table-wrap"><table><tr><th>Хеш</th><th>Акк</th><th>IP</th><th>Последний</th></tr>';
+                d.records.forEach(function(fp){
+                    h += '<tr><td class="hash-cell">' + esc(short(fp.hash, 12)) + '</td>';
+                    h += '<td>' + fp.accountId + '</td>';
+                    h += '<td class="ip-cell">' + esc(fp.ip) + '</td>';
+                    h += '<td class="date-cell">' + esc(fp.lastSeen) + '</td></tr>';
+                });
+                h += '</table></div></div>';
+                document.getElementById('admin-content').innerHTML = h;
+            }
 
-    private String adminNav(String token) {
-        String t = token != null ? token : "";
-        return "<div class='admin-nav'>"
-            + "<a href='/admin?s=" + t + "'>Статус</a>"
-            + "<a href='/admin/accounts?s=" + t + "'>Аккаунты</a>"
-            + "<a href='/admin/fingerprints?s=" + t + "'>Отпечатки</a>"
-            + "<a href='/admin/ips?s=" + t + "'>IP адреса</a>"
-            + "<a href='/profile?s=" + t + "'>Профиль</a>"
-            + "</div>";
-    }
+            function renderDevices(d) {
+                var h = '';
+                if (d.bans && d.bans.length > 0) {
+                    h += '<div class="card"><div class="card-title">Забаненные устройства</div>';
+                    h += '<div class="table-wrap"><table><tr><th>Хеш</th><th>Причина</th><th>Дата</th><th>Действие</th></tr>';
+                    d.bans.forEach(function(b){
+                        h += '<tr><td class="hash-cell">' + esc(short(b.hash, 16)) + '</td>';
+                        h += '<td class="reason-cell">' + esc(b.reason) + '</td>';
+                        h += '<td class="date-cell">' + esc(b.date) + '</td>';
+                        h += '<td class="action-cell"><button class="btn btn-green btn-small" onclick="adminUnbanDevice(\\'' + esc(b.hash) + '\\')">Разбан</button></td></tr>';
+                    });
+                    h += '</table></div></div>';
+                }
+                h += '<div class="card"><div class="card-title">Устройства (' + d.records.length + ')</div>';
+                h += '<div class="table-wrap"><table><tr><th>Хеш</th><th>Акк</th><th>IP</th><th>WebRTC</th><th>Последний</th></tr>';
+                d.records.forEach(function(dev){
+                    h += '<tr><td class="hash-cell">' + esc(short(dev.hash, 12)) + '</td>';
+                    h += '<td>' + dev.accountId + '</td>';
+                    h += '<td class="ip-cell">' + esc(dev.ip) + '</td>';
+                    h += '<td class="ip-cell">' + esc(dev.webrtcIp || '-') + '</td>';
+                    h += '<td class="date-cell">' + esc(dev.lastSeen) + '</td></tr>';
+                });
+                h += '</table></div></div>';
+                document.getElementById('admin-content').innerHTML = h;
+            }
+
+            function renderIpBans(arr) {
+                var h = '<div class="card"><div class="card-title">IP баны (' + arr.length + ')</div>';
+                if (arr.length === 0) {
+                    h += '<p style="color:#c6c6c6;text-align:center">Нет активных IP банов</p>';
+                } else {
+                    h += '<div class="table-wrap"><table><tr><th>IP</th><th>Причина</th><th>Кем</th><th>Дата</th><th>Истекает</th><th>Действие</th></tr>';
+                    arr.forEach(function(b){
+                        h += '<tr><td class="ip-cell">' + esc(b.ip) + '</td>';
+                        h += '<td class="reason-cell">' + esc(b.reason) + '</td>';
+                        h += '<td>' + esc(b.bannedBy) + '</td>';
+                        h += '<td class="date-cell">' + esc(b.date) + '</td>';
+                        h += '<td class="date-cell">' + (b.expires ? esc(b.expires) : 'Перма') + '</td>';
+                        h += '<td class="action-cell"><button class="btn btn-green btn-small" onclick="adminUnbanIp(\\'' + esc(b.ip) + '\\')">Разбан</button></td></tr>';
+                    });
+                    h += '</table></div>';
+                }
+                h += '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">';
+                h += '<input type="text" class="input-field" id="ban-ip-input" placeholder="IP адрес" style="flex:1;min-width:120px">';
+                h += '<input type="text" class="input-field" id="ban-ip-reason" placeholder="Причина" style="flex:1;min-width:120px">';
+                h += '<button class="btn btn-red btn-small" onclick="adminBanIp()">Бан IP</button>';
+                h += '</div>';
+                h += '</div>';
+                document.getElementById('admin-content').innerHTML = h;
+            }
+
+            function renderIps(arr) {
+                var h = '<div class="card"><div class="card-title">IP лог (' + arr.length + ')</div>';
+                h += '<div class="table-wrap"><table><tr><th>Ник</th><th>IP</th><th>Первый</th><th>Последний</th></tr>';
+                arr.forEach(function(ip){
+                    h += '<tr><td>' + esc(ip.nick) + '</td>';
+                    h += '<td class="ip-cell">' + esc(ip.ip) + '</td>';
+                    h += '<td class="date-cell">' + esc(ip.first) + '</td>';
+                    h += '<td class="date-cell">' + esc(ip.last) + '</td></tr>';
+                });
+                h += '</table></div></div>';
+                document.getElementById('admin-content').innerHTML = h;
+            }
+
+            // ==================== Действия ====================
+
+            window.adminBan = function(id) {
+                var r = document.getElementById('reason-' + id);
+                var reason = r ? r.value : '';
+                api('POST', '/api/admin/ban', 'account_id=' + id + '&reason=' + encodeURIComponent(reason), function(){ loadTab(); });
+            };
+            window.adminUnban = function(id) {
+                api('POST', '/api/admin/unban', 'account_id=' + id, function(){ loadTab(); });
+            };
+            window.adminBanFp = function(hash) {
+                var reason = prompt('Причина бана отпечатка:', 'Мульти-аккаунт');
+                if (reason === null) return;
+                api('POST', '/api/admin/ban-fingerprint', 'fingerprint_hash=' + encodeURIComponent(hash) + '&reason=' + encodeURIComponent(reason), function(){ loadTab(); });
+            };
+            window.adminUnbanFp = function(hash) {
+                api('POST', '/api/admin/unban-fingerprint', 'fingerprint_hash=' + encodeURIComponent(hash), function(){ loadTab(); });
+            };
+            window.adminBanDevice = function(hash) {
+                var reason = prompt('Причина бана устройства:', 'Мульти-аккаунт');
+                if (reason === null) return;
+                api('POST', '/api/admin/ban-device', 'device_hash=' + encodeURIComponent(hash) + '&reason=' + encodeURIComponent(reason), function(){ loadTab(); });
+            };
+            window.adminUnbanDevice = function(hash) {
+                api('POST', '/api/admin/unban-device', 'device_hash=' + encodeURIComponent(hash), function(){ loadTab(); });
+            };
+            window.adminBanIp = function() {
+                var ip = document.getElementById('ban-ip-input');
+                var reason = document.getElementById('ban-ip-reason');
+                if (!ip || !ip.value) return;
+                api('POST', '/api/admin/ban-ip', 'ip=' + encodeURIComponent(ip.value) + '&reason=' + encodeURIComponent(reason ? reason.value : ''), function(){ loadTab(); });
+            };
+            window.adminUnbanIp = function(ip) {
+                api('POST', '/api/admin/unban-ip', 'ip=' + encodeURIComponent(ip), function(){ loadTab(); });
+            };
+
+            // старт
+            loadTab();
+            startPoll();
+        })();
+        </script>
+        """;
 
     // ==================== Обёртка HTML страницы ====================
 
