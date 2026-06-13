@@ -1,0 +1,48 @@
+# ============================================
+# AntiGrief — Сообщения на русском языке
+# ============================================
+
+# --- Префикс ---
+prefix: "&8[&6AntiGrief&8] &f"
+
+# --- Кик-сообщения ---
+kick:
+  country: "&cДоступ только для стран СНГ. &fВаш регион: &e%country%"
+  vpn: "&cИспользование VPN/прокси запрещено. &fОтключите VPN и попробуйте снова."
+  banned: "&cВы забанены. &fПричина: &e%reason%"
+  fingerprint-banned: "&cВаше устройство забанено. &fПричина: &e%reason%"
+
+# --- Сообщения в игре ---
+game:
+  freeze: "&eВы заморожены! Привяжите аккаунт через сайт: &a%url%  /angri"
+  link-success: "&aАккаунт успешно привязан!"
+  unlink-success: "&aНик отвязан от аккаунта."
+  already-linked: "&eЭтот ник уже привязан к другому аккаунту."
+  no-permission: "&cУ вас нет прав на эту команду."
+  config-reloaded: "&aКонфигурация перезагружена."
+  status-header: "&6=== AntiGrief Status ==="
+  status-online: "&fОнлайн: &a%count% игроков"
+  status-linked: "&fПривязанных: &a%count% аккаунтов"
+  status-web: "&fВеб-сервер: &a%status%"
+  web-url: "&eПривяжите аккаунт: &a%url%"
+
+# --- Веб-сообщения ---
+web:
+  login-title: "Вход — VNLLA.RU"
+  profile-title: "Профиль — VNLLA.RU"
+  admin-title: "Админ-панель — VNLLA.RU"
+  login-discord: "Войти через Discord"
+  login-google: "Войти через Google"
+  login-vk: "Войти через VK"
+  login-telegram: "Войти через Telegram"
+  profile-nicks: "Привязанные ники"
+  profile-add-nick: "Добавить ник"
+  profile-remove-nick: "Убрать"
+  profile-logout: "Выйти"
+  profile-fingerprint: "Отпечаток устройства"
+  error-session-expired: "Сессия истекла. Войдите снова."
+  error-nick-taken: "Этот ник уже привязан к другому аккаунту."
+  error-nick-invalid: "Некорректный ник Minecraft."
+  error-no-session: "Сессия не найдена."
+  success-nick-added: "Ник успешно добавлен!"
+  success-nick-removed: "Ник убран."

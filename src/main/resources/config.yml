@@ -1,0 +1,104 @@
+# ============================================
+# AntiGrief — Конфигурация плагина
+# ============================================
+
+# --- База данных ---
+database:
+  # Путь к файлу SQLite (относительно папки плагина)
+  file: "data.db"
+  # Размер пула соединений HikariCP
+  pool-size: 5
+
+# --- Веб-сервер ---
+website:
+  # Порт веб-сервера Javalin
+  port: 8199
+  # Внешний URL сайта (для OAuth2 callback)
+  external-url: "https://mc.vnlla.ru"
+
+# --- SOCKS5 прокси (для доступа к Discord/Telegram) ---
+proxy:
+  # Хост прокси (пусто = без прокси)
+  host: "127.0.0.1"
+  # Порт прокси
+  port: 1080
+
+# --- Discord OAuth2 ---
+discord:
+  client-id: ""
+  client-secret: ""
+  bot-token: ""
+  # ID канала для уведомлений
+  notify-channel-id: ""
+
+# --- Google OAuth2 ---
+google:
+  client-id: ""
+  client-secret: ""
+
+# --- VK OAuth2 ---
+vk:
+  client-id: ""
+  client-secret: ""
+
+# --- Telegram OAuth2 (OpenID Connect) ---
+telegram:
+  bot-token: ""
+  bot-username: ""
+  # Client ID и Secret от BotFather (OpenID Connect режим)
+  client-id: ""
+  client-secret: ""
+
+# --- Гео-фильтрация ---
+geo:
+  # Список разрешённых стран (СНГ)
+  allowed-countries:
+    - "RU"  # Россия
+    - "UA"  # Украина
+    - "BY"  # Беларусь
+    - "KZ"  # Казахстан
+    - "AM"  # Армения
+    - "AZ"  # Азербайджан
+    - "GE"  # Грузия
+    - "KG"  # Кыргызстан
+    - "MD"  # Молдова
+    - "TJ"  # Таджикистан
+    - "TM"  # Туркменистан
+    - "UZ"  # Узбекистан
+
+# --- VPN/прокси проверка ---
+vpn:
+  # Включить проверку VPN/прокси/Tor
+  enabled: true
+  # API ключ для iphub.info (бесплатный: 1000 запросов/день)
+  iphub-api-key: ""
+  # Альтернативный API: proxycheck.io
+  proxycheck-api-key: ""
+
+# --- Отпечатки браузера (fingerprint) ---
+fingerprint:
+  # Включить сбор отпечатков
+  enabled: true
+  # Максимальное количество аккаунтов на один отпечаток
+  max-accounts-per-fingerprint: 3
+  # Автоматический бан при превышении лимита
+  auto-ban-on-limit: false
+
+# --- Сессии ---
+session:
+  # Время жизни сессии в секундах (7 дней)
+  max-age: 604800
+  # Время жизни cookie с ником Minecraft (10 минут)
+  nick-cookie-max-age: 600
+
+# --- Белый список (обход проверок VPN/гео) ---
+whitelist:
+  nicks: []
+  ips: []
+
+# --- Заморозка игрока до привязки ---
+freeze:
+  # Замораживать игрока при входе до привязки аккаунта
+  enabled: true
+  # Сообщение при заморозке
+  message: "&eПривяжи аккаунт! &f/angri"

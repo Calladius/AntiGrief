@@ -1,0 +1,24 @@
+name: AntiGrief
+version: '2.0.6'
+main: com.antigrief.AntiGriefPlugin
+api-version: '1.21'
+folia-supported: true
+description: Защита сервера - OAuth2 авторизация, VPN/гео фильтр, отпечатки браузера
+author: Calladius
+
+commands:
+  angri:
+    description: Управление AntiGrief
+    usage: /angri <reload|status|wl|ban|unban>
+    permission: antigrief.admin
+
+permissions:
+  antigrief.admin:
+    description: Полный доступ к админ-командам
+    default: op
+  antigrief.bypass.vpn:
+    description: Обход проверки VPN/прокси
+    default: op
+  antigrief.bypass.country:
+    description: Обход проверки страны (СНГ)
+    default: op

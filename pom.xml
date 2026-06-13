@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.antigrief</groupId>
+    <artifactId>AntiGrief</artifactId>
+    <version>2.0.6</version>
+    <packaging>jar</packaging>
+
+    <name>AntiGrief</name>
+    <description>Защита Minecraft сервера: OAuth2 авторизация, VPN/гео фильтрация, отпечатки браузера</description>
+
+    <properties>
+        <java.version>17</java.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <repositories>
+        <!-- Paper API для Folia -->
+        <repository>
+            <id>papermc-repo</id>
+            <url>https://repo.papermc.io/repository/maven-public/</url>
+        </repository>
+    </repositories>
+
+    <dependencies>
+        <!-- Paper API (Folia совместим) -->
+        <dependency>
+            <groupId>io.papermc.paper</groupId>
+            <artifactId>paper-api</artifactId>
+            <version>1.21.1-R0.1-SNAPSHOT</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Javalin — веб-сервер -->
+        <dependency>
+            <groupId>io.javalin</groupId>
+            <artifactId>javalin</artifactId>
+            <version>5.6.3</version>
+        </dependency>
+
+        <!-- HikariCP — пул соединений SQLite -->
+        <dependency>
+            <groupId>com.zaxxer</groupId>
+            <artifactId>HikariCP</artifactId>
+            <version>5.1.0</version>
+        </dependency>
+
+        <!-- SQLite JDBC -->
+        <dependency>
+            <groupId>org.xerial</groupId>
+            <artifactId>sqlite-jdbc</artifactId>
+            <version>3.45.1.0</version>
+        </dependency>
+
+        <!-- Jackson — JSON парсер -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>2.17.0</version>
+        </dependency>
+
+        <!-- SLF4J Simple — логгер для Javalin/JDA -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-simple</artifactId>
+            <version>2.0.9</version>
+        </dependency>
+
+        <!-- JDA — Discord бот -->
+        <dependency>
+            <groupId>net.dv8tion</groupId>
+            <artifactId>JDA</artifactId>
+            <version>5.6.1</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>club.minnced</groupId>
+                    <artifactId>opus-java</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <finalName>AntiGrief-2.0.6</finalName>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>true</filtering>
+            </resource>
+        </resources>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.12.1</version>
+                <configuration>
+                    <source>${java.version}</source>
+                    <target>${java.version}</target>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.5.1</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                         <configuration>
+                             <relocations>
+                                 <relocation>
+                                     <pattern>io.javalin</pattern>
+                                     <shadedPattern>com.antigrief.libs.javalin</shadedPattern>
+                                 </relocation>
+                                 <relocation>
+                                     <pattern>com.zaxxer.hikari</pattern>
+                                     <shadedPattern>com.antigrief.libs.hikari</shadedPattern>
+                                 </relocation>
+                                 <relocation>
+                                     <pattern>org.sqlite</pattern>
+                                     <shadedPattern>com.antigrief.libs.sqlite</shadedPattern>
+                                 </relocation>
+                                 <relocation>
+                                     <pattern>com.fasterxml.jackson</pattern>
+                                     <shadedPattern>com.antigrief.libs.jackson</shadedPattern>
+                                 </relocation>
+                                 <!-- JDA НЕ relocate — ломает SSL/WebSocket -->
+                                 <relocation>
+                                     <pattern>okhttp3</pattern>
+                                     <shadedPattern>com.antigrief.libs.okhttp</shadedPattern>
+                                 </relocation>
+                                 <relocation>
+                                     <pattern>kotlin</pattern>
+                                     <shadedPattern>com.antigrief.libs.kotlin</shadedPattern>
+                                 </relocation>
+                                  <relocation>
+                                      <pattern>org.jetbrains</pattern>
+                                      <shadedPattern>com.antigrief.libs.jetbrains</shadedPattern>
+                                  </relocation>
+                              </relocations>
+                              <minimizeJar>false</minimizeJar>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+
