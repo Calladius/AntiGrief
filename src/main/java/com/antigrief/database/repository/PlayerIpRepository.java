@@ -157,6 +157,22 @@ public class PlayerIpRepository {
         return false;
     }
 
+    // есть ли у ника хотя бы одна запись с заполненным asn?
+    // если нет — старые записи были до обновления, доверяем новому asn
+    public boolean hasAnyAsnRecord(String minecraftNick) {
+        String sql = "SELECT 1 FROM player_ips WHERE minecraft_nick = ? AND asn IS NOT NULL AND asn != '' LIMIT 1";
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, minecraftNick);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+
     // если записей нет — первый заход после привязки
     public boolean hasAnyIpRecord(String minecraftNick) {
         String sql = "SELECT 1 FROM player_ips WHERE minecraft_nick = ? LIMIT 1";

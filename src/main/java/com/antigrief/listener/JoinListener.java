@@ -77,8 +77,11 @@ public class JoinListener implements Listener {
             // ip новый — проверяем asn (провайдер)
             String asn = resolveAsn(ip);
             boolean asnKnown = asn != null && plugin.getPlayerIpRepository().isAsnKnownForNick(nick, asn);
+            // если у ника вообще нет записей с asn — старые записи были до обновления,
+            // доверяем новому asn (считаем что это первый «реальный» провайдер)
+            boolean hasAsnRecords = plugin.getPlayerIpRepository().hasAnyAsnRecord(nick);
 
-            if (asnKnown) {
+            if (asnKnown || (asn != null && !hasAsnRecords)) {
                 // asn совпадает — динамическая смена ip провайдером, не кража
                 plugin.getFrozenPlayers().remove(nick);
                 plugin.getPlayerIpRepository().recordIp(nick, ip, asn);
@@ -92,7 +95,8 @@ public class JoinListener implements Listener {
                 }
 
                 plugin.getLogger().info("[Join] " + nick + " привязан, ip новый (" + ip + ") но asn совпадает ("
-                    + asn + ") — динамическая смена провайдера, пропуск"
+                    + asn + ") — " + (hasAsnRecords ? "динамическая смена провайдера" : "первый записанный asn")
+                    + ", пропуск"
                     + (isWhitelisted ? " (WL)" : ""));
             } else {
                 // asn другой или неизвестен — возможная кража ника, морозим
