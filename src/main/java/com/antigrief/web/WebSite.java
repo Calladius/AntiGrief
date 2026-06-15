@@ -936,12 +936,24 @@ public class WebSite {
         String webIp = ipChecker.getIpFromWeb(ctx);
         if (webIp == null || webIp.isEmpty()) return;
 
+        // получаем asn для записи
+        String asn = null;
+        if (!isLocalIp(webIp)) {
+            try {
+                VpnChecker.VpnResult vpnResult = plugin.getVpnChecker().check(webIp);
+                asn = vpnResult.asn;
+            } catch (Exception e) {
+                plugin.getLogger().warning("[Web] не удалось получить asn для " + webIp + ": " + e.getMessage());
+            }
+        }
+
         java.util.List<String> nicks = plugin.getPlayerNickRepository().getNicksByAccount(account.id);
         for (String nick : nicks) {
             if (plugin.getFrozenPlayers().contains(nick)) {
                 unfreezePlayer(nick);
-                plugin.getPlayerIpRepository().recordIp(nick, webIp);
-                plugin.getLogger().info("[Web] " + nick + " разморожен — владелец подтвердил вход через OAuth2 (IP=" + webIp + ")");
+                plugin.getPlayerIpRepository().recordIp(nick, webIp, asn);
+                plugin.getLogger().info("[Web] " + nick + " разморожен — владелец подтвердил вход через OAuth2 (IP=" + webIp + ")"
+                    + (asn != null ? " ASN=" + asn : ""));
             }
         }
     }

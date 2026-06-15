@@ -21,12 +21,13 @@ public class PlayerIpRepository {
     public static class IpRecord {
         public String minecraftNick;
         public String ipAddress;
+        public String asn;
         public String firstSeen;
         public String lastSeen;
     }
 
-    // upsert: если запись есть — обновит last_seen
-    public boolean recordIp(String minecraftNick, String ipAddress) {
+    // upsert: если запись есть — обновит last_seen и asn
+    public boolean recordIp(String minecraftNick, String ipAddress, String asn) {
         String checkSql = "SELECT id FROM player_ips WHERE minecraft_nick = ? AND ip_address = ?";
         try (Connection conn = db.getConnection()) {
             try (PreparedStatement ps = conn.prepareStatement(checkSql)) {
@@ -34,25 +35,32 @@ public class PlayerIpRepository {
                 ps.setString(2, ipAddress);
                 try (ResultSet rs = ps.executeQuery()) {
                     if (rs.next()) {
-                        String updateSql = "UPDATE player_ips SET last_seen = datetime('now') WHERE minecraft_nick = ? AND ip_address = ?";
+                        String updateSql = "UPDATE player_ips SET last_seen = datetime('now'), asn = ? WHERE minecraft_nick = ? AND ip_address = ?";
                         try (PreparedStatement ups = conn.prepareStatement(updateSql)) {
-                            ups.setString(1, minecraftNick);
-                            ups.setString(2, ipAddress);
+                            ups.setString(1, asn);
+                            ups.setString(2, minecraftNick);
+                            ups.setString(3, ipAddress);
                             return ups.executeUpdate() > 0;
                         }
                     }
                 }
             }
-            String insertSql = "INSERT INTO player_ips (minecraft_nick, ip_address) VALUES (?, ?)";
+            String insertSql = "INSERT INTO player_ips (minecraft_nick, ip_address, asn) VALUES (?, ?, ?)";
             try (PreparedStatement ps = conn.prepareStatement(insertSql)) {
                 ps.setString(1, minecraftNick);
                 ps.setString(2, ipAddress);
+                ps.setString(3, asn);
                 return ps.executeUpdate() > 0;
             }
         } catch (SQLException e) {
             e.printStackTrace();
         }
         return false;
+    }
+
+    // обратная совместимость — без asn
+    public boolean recordIp(String minecraftNick, String ipAddress) {
+        return recordIp(minecraftNick, ipAddress, null);
     }
 
     public List<IpRecord> getIpsByNick(String minecraftNick) {
@@ -66,6 +74,7 @@ public class PlayerIpRepository {
                     IpRecord r = new IpRecord();
                     r.minecraftNick = rs.getString("minecraft_nick");
                     r.ipAddress = rs.getString("ip_address");
+                    r.asn = rs.getString("asn");
                     r.firstSeen = rs.getString("first_seen");
                     r.lastSeen = rs.getString("last_seen");
                     list.add(r);
@@ -103,6 +112,7 @@ public class PlayerIpRepository {
                 IpRecord r = new IpRecord();
                 r.minecraftNick = rs.getString("minecraft_nick");
                 r.ipAddress = rs.getString("ip_address");
+                r.asn = rs.getString("asn");
                 r.firstSeen = rs.getString("first_seen");
                 r.lastSeen = rs.getString("last_seen");
                 list.add(r);
@@ -120,6 +130,24 @@ public class PlayerIpRepository {
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, minecraftNick);
             ps.setString(2, ipAddress);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+
+    // проверка asn: был ли у ника ip от того же провайдера (тот же asn)?
+    // если да — скорее всего динамическая смена ip, не кража ника
+    public boolean isAsnKnownForNick(String minecraftNick, String asn) {
+        if (asn == null || asn.isEmpty()) return false;
+        String sql = "SELECT 1 FROM player_ips WHERE minecraft_nick = ? AND asn = ? LIMIT 1";
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, minecraftNick);
+            ps.setString(2, asn);
             try (ResultSet rs = ps.executeQuery()) {
                 return rs.next();
             }

@@ -46,14 +46,19 @@ public class VpnChecker {
         public boolean isError;
         public String country;
         public String isp;
+        public String asn;   // номер автономной системы (провайдер), напр. "12389"
         public String vpnType; // "VPN", "Proxy", "Tor", "Hosting" или null
 
         public VpnResult(boolean isVpn, boolean isError, String country, String isp) {
-            this.isVpn = isVpn; this.isError = isError; this.country = country; this.isp = isp; this.vpnType = null;
+            this.isVpn = isVpn; this.isError = isError; this.country = country; this.isp = isp; this.vpnType = null; this.asn = null;
         }
 
         public VpnResult(boolean isVpn, boolean isError, String country, String isp, String vpnType) {
-            this.isVpn = isVpn; this.isError = isError; this.country = country; this.isp = isp; this.vpnType = vpnType;
+            this.isVpn = isVpn; this.isError = isError; this.country = country; this.isp = isp; this.vpnType = vpnType; this.asn = null;
+        }
+
+        public VpnResult(boolean isVpn, boolean isError, String country, String isp, String vpnType, String asn) {
+            this.isVpn = isVpn; this.isError = isError; this.country = country; this.isp = isp; this.vpnType = vpnType; this.asn = asn;
         }
     }
 
@@ -107,6 +112,11 @@ public class VpnChecker {
                     JsonNode ipNode = json.path(ip);
                     String country = ipNode.path("location").path("country_code").asText("???");
                     String isp = ipNode.path("network").path("provider").asText("???");
+                    String asn = ipNode.path("network").path("asn").asText(null);
+                    // нормализуем: "AS12345" → "12345"
+                    if (asn != null && asn.toUpperCase().startsWith("AS")) {
+                        asn = asn.substring(2);
+                    }
                     String networkType = ipNode.path("network").path("type").asText("");
 
                     JsonNode detections = ipNode.path("detections");
@@ -125,11 +135,11 @@ public class VpnChecker {
                     else if (isHosting) vpnType = "Hosting";
 
                     plugin.getLogger().info("[VpnChecker] proxycheck: " + ip
-                        + " country=" + country + " vpn=" + isVpn + " proxy=" + isProxy
+                        + " country=" + country + " asn=" + asn + " vpn=" + isVpn + " proxy=" + isProxy
                         + " tor=" + isTor + " hosting=" + isHosting + " risk=" + risk
                         + " type=" + networkType + " isp=" + isp + " → blocked=" + isBlocked);
 
-                    VpnResult result = new VpnResult(isBlocked, false, country, isp, vpnType);
+                    VpnResult result = new VpnResult(isBlocked, false, country, isp, vpnType, asn);
                     cache.put(ip, result);
                     return result;
                 } catch (Exception e) {
@@ -169,7 +179,7 @@ public class VpnChecker {
     }
 
     private CompletableFuture<VpnResult> checkIpApiAsync(String ip) {
-        String url = "http://ip-api.com/json/" + ip + "?fields=status,message,countryCode,proxy,hosting,isp";
+        String url = "http://ip-api.com/json/" + ip + "?fields=status,message,countryCode,proxy,hosting,isp,as";
 
         HttpRequest request = HttpRequest.newBuilder()
             .uri(URI.create(url)).timeout(Duration.ofSeconds(5)).GET().build();
@@ -185,10 +195,22 @@ public class VpnChecker {
                     boolean proxy = json.path("proxy").asBoolean(false);
                     boolean hosting = json.path("hosting").asBoolean(false);
                     String isp = json.path("isp").asText("???");
+                    String asnRaw = json.path("as").asText(null);
+                    // нормализуем: "AS12345 Beeline" → "12345"
+                    String asn = null;
+                    if (asnRaw != null && !asnRaw.isEmpty()) {
+                        String[] parts = asnRaw.split("\\s+", 2);
+                        String asnNum = parts[0];
+                        if (asnNum.toUpperCase().startsWith("AS")) {
+                            asn = asnNum.substring(2);
+                        } else {
+                            asn = asnNum;
+                        }
+                    }
                     boolean isVpn = proxy || hosting;
                     String vpnType = isVpn ? (hosting ? "Hosting" : (proxy ? "Proxy" : null)) : null;
 
-                    VpnResult result = new VpnResult(isVpn, false, country, isp, vpnType);
+                    VpnResult result = new VpnResult(isVpn, false, country, isp, vpnType, asn);
                     cache.put(ip, result);
                     return result;
                 } catch (Exception e) {
@@ -199,7 +221,7 @@ public class VpnChecker {
     }
 
     private VpnResult checkIpApiSync(String ip) throws Exception {
-        String url = "http://ip-api.com/json/" + ip + "?fields=status,message,countryCode,proxy,hosting,isp";
+        String url = "http://ip-api.com/json/" + ip + "?fields=status,message,countryCode,proxy,hosting,isp,as";
 
         HttpRequest request = HttpRequest.newBuilder()
             .uri(URI.create(url)).timeout(Duration.ofSeconds(5)).GET().build();
@@ -213,13 +235,25 @@ public class VpnChecker {
         boolean proxy = json.path("proxy").asBoolean(false);
         boolean hosting = json.path("hosting").asBoolean(false);
         String isp = json.path("isp").asText("???");
+        String asnRaw = json.path("as").asText(null);
+        // нормализуем: "AS12345 Beeline" → "12345"
+        String asn = null;
+        if (asnRaw != null && !asnRaw.isEmpty()) {
+            String[] parts = asnRaw.split("\\s+", 2);
+            String asnNum = parts[0];
+            if (asnNum.toUpperCase().startsWith("AS")) {
+                asn = asnNum.substring(2);
+            } else {
+                asn = asnNum;
+            }
+        }
         boolean isVpn = proxy || hosting;
         String vpnType = isVpn ? (hosting ? "Hosting" : (proxy ? "Proxy" : null)) : null;
 
         plugin.getLogger().info("[VpnChecker] ip-api (резерв): " + ip
-            + " country=" + country + " proxy=" + proxy + " hosting=" + hosting + " isp=" + isp);
+            + " country=" + country + " asn=" + asn + " proxy=" + proxy + " hosting=" + hosting + " isp=" + isp);
 
-        VpnResult result = new VpnResult(isVpn, false, country, isp, vpnType);
+        VpnResult result = new VpnResult(isVpn, false, country, isp, vpnType, asn);
         cache.put(ip, result);
         return result;
     }

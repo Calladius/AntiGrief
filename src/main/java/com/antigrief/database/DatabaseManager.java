@@ -167,6 +167,7 @@ public class DatabaseManager {
             migrateTable(conn, "web_accounts", "ban_expires", "TEXT");
             migrateTable(conn, "web_accounts", "last_login", "TEXT");
             migrateTable(conn, "ip_bans", "ban_expires", "TEXT");
+            migrateTable(conn, "player_ips", "asn", "TEXT");
         }
     }
 
