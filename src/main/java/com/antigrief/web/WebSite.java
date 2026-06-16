@@ -477,6 +477,22 @@ public class WebSite {
         }
 
         unfreezePlayer(nick);
+
+        // записываем IP при привязке ника — для ASN-проверки при следующих входах
+        String linkIp = ipChecker.getIpFromWeb(ctx);
+        if (linkIp != null && !linkIp.isEmpty()) {
+            String linkAsn = null;
+            if (!isLocalIp(linkIp)) {
+                try {
+                    VpnChecker.VpnResult vpnResult = plugin.getVpnChecker().check(linkIp);
+                    linkAsn = vpnResult.asn;
+                } catch (Exception ignored) {}
+            }
+            plugin.getPlayerIpRepository().recordIp(nick, linkIp, linkAsn);
+            plugin.getLogger().info("[Web] " + nick + " привязан, IP записан (" + linkIp + ")"
+                + (linkAsn != null ? " ASN=" + linkAsn : ""));
+        }
+
         plugin.getDiscordNotifier().notifyNickLinked(nick, account.username);
         account = plugin.getWebAccountRepository().getAccount(account.id);
         ctx.contentType("text/html");
@@ -932,6 +948,7 @@ public class WebSite {
     }
 
     // размораживаем ники при логине через oauth (подтверждает владельца)
+    // и записываем IP + ASN всегда — даже если уже разморожен
     private void confirmNewIpLogin(Context ctx, WebAccountRepository.AccountData account) {
         String webIp = ipChecker.getIpFromWeb(ctx);
         if (webIp == null || webIp.isEmpty()) return;
@@ -949,10 +966,15 @@ public class WebSite {
 
         java.util.List<String> nicks = plugin.getPlayerNickRepository().getNicksByAccount(account.id);
         for (String nick : nicks) {
+            // записываем IP всегда — для ASN-проверки при следующих входах
+            plugin.getPlayerIpRepository().recordIp(nick, webIp, asn);
+
             if (plugin.getFrozenPlayers().contains(nick)) {
                 unfreezePlayer(nick);
-                plugin.getPlayerIpRepository().recordIp(nick, webIp, asn);
                 plugin.getLogger().info("[Web] " + nick + " разморожен — владелец подтвердил вход через OAuth2 (IP=" + webIp + ")"
+                    + (asn != null ? " ASN=" + asn : ""));
+            } else {
+                plugin.getLogger().info("[Web] " + nick + " IP записан при OAuth2 входе (IP=" + webIp + ")"
                     + (asn != null ? " ASN=" + asn : ""));
             }
         }
